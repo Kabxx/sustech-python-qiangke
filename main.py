@@ -53,9 +53,6 @@ class CacheLoadException(MessageException):
 class LoginException(MessageException):
     pass
 
-class SelectException(MessageException):
-    pass
-
 
 class CookieExpireException(Exception):
     pass
@@ -387,13 +384,12 @@ async def select_course() -> bool:
                     Log.info(f'"{course["name"]}" {message}, 正在重试')
                     return False
                 elif '超过可选分数' in message:
-                    raise SelectException('选课分数已达上限')
+                    Log.warning(f'{course["name"]}" {message}, 跳过该课程')
+                    return True
                 else:
                     Log.info(f'"{course["name"]}" {message}, 等待重试')
                     return True
     except CookieExpireException as e:
-        raise e
-    except SelectException as e:
         raise e
     except KeyboardInterrupt as e:
         raise e
@@ -422,9 +418,6 @@ async def main() -> None:
             else:
                 await asyncio.sleep(0.1)
         except LoginException as e:
-            Log.error(f'{e}')
-            return
-        except SelectException as e:
             Log.error(f'{e}')
             return
         except asyncio.TimeoutError:
