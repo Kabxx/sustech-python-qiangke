@@ -340,7 +340,7 @@ async def get_cookies() -> dict[str, str]:
 
 
 @reload_cookies
-async def select_target() -> bool:
+async def select() -> bool:
     global _cache, _http, _courses, _success
     if len(_courses) <= 0:
         return False
@@ -410,7 +410,7 @@ async def start() -> None:
     while len(_courses) > 0:
         try:
             start = time.monotonic()
-            wait = await asyncio.wait_for(asyncio.shield(select_target()), timeout=_info['timeout'])
+            wait = await asyncio.wait_for(asyncio.shield(select()), timeout=_info['timeout'])
             if wait:
                 end = time.monotonic()
                 last = _info['timeout'] - (end - start)
