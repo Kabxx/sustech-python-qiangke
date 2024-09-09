@@ -135,7 +135,7 @@ async def load_cache() -> None:
 
             if not _info['verify_cache'] or \
                     (_cache['id'] == _info['id'] and _cache['semester'] == semester and set(_cache['selected']) == set(selected)):
-                Log.success(f'{"" if _info['verify_cache'] else "缓存文件校验关闭, "} 成功从缓存文件加载课程信息')
+                Log.success(f'{"" if _info["verify_cache"] else "缓存文件校验关闭, "} 成功从缓存文件加载课程信息')
                 return
         except:
             Log.warning('缓存文件解析失败, 正在重新获取课程信息')
