@@ -91,6 +91,12 @@ async def load_config() -> None:
         _info = _config['info']
         _http = _config['http']
         _courses = _config['courses']
+        # check if id, password exist
+        if 'id' not in _info or 'password' not in _info:
+            raise ConfigLoadException('配置文件中, 字段 "info" 需要包含 id, password')
+        else:
+            _info['id'] = str(_info['id'])
+            _info['password'] = str(_info['password'])
         # set default value to fields
         if 'retry' not in _info:
             _info['retry'] = False
@@ -100,20 +106,21 @@ async def load_config() -> None:
             _info['timeout'] = 1.2
         # verify fields
         if not isinstance(_info, dict):
-            raise ConfigLoadException('配置文件中,字段 "info" 不是对象')
+            raise ConfigLoadException('配置文件中,字段 "info" 需要为对象')
         if not isinstance(_http, dict):
-            raise ConfigLoadException('配置文件中,字段 "http" 不是对象')
+            raise ConfigLoadException('配置文件中,字段 "http" 需要为对象')
         if not isinstance(_courses, list):
-            raise ConfigLoadException('配置文件中,字段 "courses" 不是数组')
-        if not isinstance(_info['retry'],bool):
+            raise ConfigLoadException('配置文件中,字段 "courses" 需要为数组且不能为空')
+        if not isinstance(_info['retry'], bool):
             raise ConfigLoadException('配置文件中,字段 "info.retry" 需要为布尔值')
-        if not isinstance(_info['cache_verify'],bool):
+        if not isinstance(_info['cache_verify'], bool):
             raise ConfigLoadException('配置文件中,字段 "info.cache_verify" 需要为布尔值')
-        if not isinstance(_info['timeout'],float):
+        if not isinstance(_info['timeout'], float):
             raise ConfigLoadException('配置文件中,字段 "info.timeout" 需要为浮点数')
-        # load id, password
-        if 'id' not in _info or 'password' not in _info:
-            raise ConfigLoadException('配置文件中, 字段 "info" 需要包含 id, password')
+        if not isinstance(_http['headers'], dict):
+            raise ConfigLoadException('配置文件中,字段 "http.headers" 需要为对象')
+        if not isinstance(_http['cookies'], dict) or _http['cookies'] is not None:
+            raise ConfigLoadException('配置文件中,字段 "http.headers" 需要置空或为对象')
         # load cookies
         if 'cookies' in _http and _http['cookies']:
             if 'JSESSIONID' in _http['cookies'] \
