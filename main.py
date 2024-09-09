@@ -93,6 +93,8 @@ async def load_config() -> None:
             _info['retry'] = False
         if 'cache_verify' not in _info:
             _info['cache_verify'] = True
+        if 'timeout' not in _info:
+            _info['timeout'] = 1.2
         # verify fields
         if not isinstance(_info, dict):
             raise ConfigLoadException('"info" 字段不是对象')
@@ -407,10 +409,10 @@ async def main() -> None:
     while len(_courses) > 0:
         try:
             start = time.monotonic()
-            wait = await asyncio.wait_for(asyncio.shield(select_course()), timeout=1.2)
+            wait = await asyncio.wait_for(asyncio.shield(select_course()), timeout=_info['timeout'])
             if wait:
                 end = time.monotonic()
-                last = 1.2 - (end - start)
+                last = _info['timeout'] - (end - start)
                 if last > 0:
                     await asyncio.sleep(last)
             else:

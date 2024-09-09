@@ -8,6 +8,8 @@ info:
   retry: false
   # 是否校验cache文件
   cache_verify: true
+  # 请求间隔(默认为1.2s)
+  timeout: 1.2
 
 http:
   # 在此处设置自定义http头
