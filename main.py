@@ -15,7 +15,6 @@ _config: dict = {}
 _info: dict = {}
 _http: dict = {}
 _cache: dict = {}
-_retry: bool = False
 
 _courses: list = []
 
@@ -73,7 +72,7 @@ def auto_update(fun):
 async def load_config() -> None:
     Log.info('正在加载配置文件')
     try:
-        global _config, _info, _http, _courses, _retry
+        global _config, _info, _http, _courses
         try:
             with open(CONFIG_PATH, mode='r', encoding='utf8') as config_file:
                 _config = yaml.safe_load(config_file)
@@ -89,7 +88,10 @@ async def load_config() -> None:
         _info = _config['info']
         _http = _config['http']
         _courses = _config['courses']
-        _retry = _info['retry'] if 'retry' in _info else False
+        if 'retry' not in _info or not isinstance(_info['retry'], bool):
+            _info['retry'] = False
+        if 'verify_cache' not in _info or not isinstance(_info['verify_cache'], bool):
+            _info['verify_cache'] = True
         # verify fields
         if not isinstance(_info, dict):
             raise ConfigLoadException('"info" 字段不是对象')
@@ -120,6 +122,8 @@ async def load_cache() -> None:
     Log.info('正在加载缓存文件')
     # get semester data
     semester = await get_semester()
+    # get selected courses
+    selected = await get_selected_courses(semester)
     # try load _cache file
     global _cache
     if not os.path.exists(CACHE_PATH):
@@ -128,13 +132,16 @@ async def load_cache() -> None:
         try:
             with open(CACHE_PATH, mode='r') as cache_file:
                 _cache = json.load(cache_file)
-            if _cache['id'] == _info['id'] and _cache['semester'] == semester:
+
+            if not _info['verify_cache'] or \
+                    (_cache['id'] == _info['id'] and _cache['semester'] == semester and set(_cache['selected']) == set(selected)):
                 Log.success('成功从缓存文件加载课程信息')
                 return
         except:
             Log.warning('缓存文件解析失败, 正在重新获取课程信息')
     # init cache
-    _cache = {'id': _info['id'], 'semester': semester, 'courses': {}}
+    _cache = {'id': _info['id'], 'semester': semester,
+              'courses': {}, 'selected': selected}
     # _cache expire or not exist, get all courses
     task = []
     for keyword, name in {
@@ -143,6 +150,7 @@ async def load_cache() -> None:
         'kzyxk': '培养方案内课程',
         'zynknjxk': '非培养方案内课程',
         'jhnxk': '计划内选课新生',
+        'cxxk': '重修选课',
     }.items():
         task.append(
             asyncio.create_task(
@@ -178,6 +186,36 @@ async def get_semester() -> dict:
             raise e
         except Exception:
             Log.warning('获取学期信息失败, 正在尝试重新获取')
+
+
+@auto_update
+async def get_selected_courses(semester: dict):
+    while True:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    url='https://tis.sustech.edu.cn/Xsxk/queryYxkc',
+                    headers=_http['headers'],
+                    cookies=_http['cookies'],
+                    data={
+                        "p_xn": semester['p_xn'],
+                        "p_xq": semester['p_xq'],
+                        "p_xnxq": semester['p_xnxq'],
+                        "p_pylx": 1,
+                        "mxpylx": 1,
+                        "p_xkfsdm": 'yixuan',
+                        "pageNum": 1,
+                        "pageSize": 1000
+                    },
+                    allow_redirects=False,
+                ) as res:
+                    if res.status == 302:
+                        raise CookieExpireException
+                    return [course['rwmc'] for course in json.loads(await res.read())['yxkcList']]
+        except CookieExpireException as e:
+            raise e
+        except:
+            Log.warning(f'获取已选课程失败, 正在尝试重新获取')
 
 
 @auto_update
@@ -273,10 +311,11 @@ async def get_cookie() -> dict[str, str]:
     while True:
         try:
             cookies = await get_tis_cookies()
-            Log.success(f'身份认证信息获取成功: JSESSIONID: {cookies["JSESSIONID"]}, route: {cookies["route"]}')
+            Log.success(
+                f'身份认证信息获取成功: JSESSIONID: {cookies["JSESSIONID"]}, route: {cookies["route"]}')
             return cookies
         except:
-            if _retry:
+            if _info['retry']:
                 Log.warning('身份认证信息获取失败, 正在重试')
             else:
                 raise LoginException('身份认证信息获取失败')
