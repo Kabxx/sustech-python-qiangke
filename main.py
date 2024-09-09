@@ -459,7 +459,6 @@ async def start() -> None:
 
 
 async def main() -> None:
-    global _courses, _success
     await load_config()
     await load_cache()
     await start()
