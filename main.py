@@ -152,7 +152,7 @@ async def load_cache() -> None:
     _cache = {'id': _info['id'], 'semester': semester,
               'courses': {}, 'selected': selected}
     # _cache expire or not exist, get all courses
-    task = []
+    tasks = []
     for keyword, name in {
         'bxxk': '通识必修选课',
         'xxxk': '通识选修选课',
@@ -161,12 +161,13 @@ async def load_cache() -> None:
         'jhnxk': '计划内选课新生',
         'cxxk': '重修选课',
     }.items():
-        task.append(
+        tasks.append(
             asyncio.create_task(
-                load_courses(semester, keyword, name)
+                get_courses(semester, keyword, name)
             )
         )
-    await asyncio.gather(*task)
+    for courses in await asyncio.gather(*tasks):
+        _cache['courses'].update(courses)
     with open(CACHE_PATH, mode='w') as fd:
         fd.write(json.dumps(_cache))
     Log.success('已将课程信息写入缓存文件')
@@ -232,7 +233,7 @@ async def get_selected(semester: dict):
 
 
 @reload_cookies
-async def load_courses(semester: dict, keyword: str, name: str) -> None:
+async def get_courses(semester: dict, keyword: str, name: str) -> None:
     global _cache, _http
     while True:
         try:
@@ -255,14 +256,15 @@ async def load_courses(semester: dict, keyword: str, name: str) -> None:
                 ) as res:
                     if res.status == 302:
                         raise CookieExpireException
+                    courses = {}
                     for course in json.loads(await res.read())['kxrwList']['list']:
-                        _cache['courses'][course['rwmc']] = {
+                        courses[course['rwmc']] = {
                             'id': course['id'],
                             'name': course['rwmc'],
                             'kind': keyword,
                         }
                     Log.success(f'已成功获取 "{name}" 的全部课程')
-                    return
+                    return courses
         except CookieExpireException as e:
             raise e
         except:
@@ -337,23 +339,6 @@ async def get_cookies() -> dict[str, str]:
                 raise LoginException('身份认证信息获取失败')
 
 
-def prepare_targets() -> None:
-    global _cache, _courses
-    courses = []
-    for course in _courses:
-        if course not in _cache['courses']:
-            Log.warning(f'"{course}" - 课程名称已选择或不存在, 跳过该课程')
-        else:
-            courses.append(_cache['courses'][course])
-    _courses = courses
-
-
-def remove_target(course: dict) -> None:
-    global _courses
-    if course['name'] == _courses[0]['name']:
-        _courses.pop(0)
-
-
 @reload_cookies
 async def select_target() -> bool:
     global _cache, _http, _courses, _success
@@ -384,7 +369,8 @@ async def select_target() -> bool:
                 message = json.loads(await res.read())['message']
                 if "成功" in message:
                     Log.success(f'选课 "{course["name"]}" {message}, 进行下一课程')
-                    remove_target(course)
+                    if course['name'] == _courses[0]['name']:
+                        _courses.pop(0)
                     _success.append(course['name'])
                     return True
                 elif '冲突' in message or \
@@ -392,7 +378,8 @@ async def select_target() -> bool:
                         '已满' in message or \
                         '超过可选分数' in message:
                     Log.warning(f'"{course["name"]}" {message}, 跳过该课程')
-                    remove_target(course)
+                    if course['name'] == _courses[0]['name']:
+                        _courses.pop(0)
                     return True
                 elif '选课请求频率过高' in message:
                     Log.info(f'"{course["name"]}" {message}, 正在重试')
@@ -409,10 +396,17 @@ async def select_target() -> bool:
         return False
 
 
-async def start_select() -> None:
+async def start() -> None:
     global _info
     # prepare target courses
-    prepare_targets()
+    courses = []
+    for course in _courses:
+        if course not in _cache['courses']:
+            Log.warning(f'"{course}" - 课程名称已选择或不存在, 跳过该课程')
+        else:
+            courses.append(_cache['courses'][course])
+    _courses = courses
+    # start send request to select target course
     while len(_courses) > 0:
         try:
             start = time.monotonic()
@@ -431,15 +425,14 @@ async def start_select() -> None:
             pass
         except Exception as e:
             raise e
+    Log.success(f'成功选择的课程: {_success if len(_success) > 0 else "无"}')
 
 
 async def main() -> None:
     global _courses, _success
     await load_config()
     await load_cache()
-    await start_select()
-    Log.success(f'成功选择的课程: {_success if len(_success) > 0 else "无"}')
-
+    await start()
 
 if __name__ == '__main__':
     try:
