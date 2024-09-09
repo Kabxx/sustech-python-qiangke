@@ -105,6 +105,12 @@ async def load_config() -> None:
             raise ConfigLoadException('配置文件中,字段 "http" 不是对象')
         if not isinstance(_courses, list):
             raise ConfigLoadException('配置文件中,字段 "courses" 不是数组')
+        if not isinstance(_info['retry'],bool):
+            raise ConfigLoadException('配置文件中,字段 "info.retry" 需要为布尔值')
+        if not isinstance(_info['cache_verify'],bool):
+            raise ConfigLoadException('配置文件中,字段 "info.cache_verify" 需要为布尔值')
+        if not isinstance(_info['timeout'],float):
+            raise ConfigLoadException('配置文件中,字段 "info.timeout" 需要为浮点数')
         # load id, password
         if 'id' not in _info or 'password' not in _info:
             raise ConfigLoadException('配置文件中, 字段 "info" 需要包含 id, password')
