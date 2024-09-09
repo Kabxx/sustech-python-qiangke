@@ -119,7 +119,7 @@ async def load_config() -> None:
             raise ConfigLoadException('配置文件中,字段 "info.timeout" 需要为浮点数')
         if not isinstance(_http['headers'], dict):
             raise ConfigLoadException('配置文件中,字段 "http.headers" 需要为对象')
-        if not isinstance(_http['cookies'], dict) or _http['cookies'] is not None:
+        if not isinstance(_http['cookies'], dict) and _http['cookies'] is not None:
             raise ConfigLoadException('配置文件中,字段 "http.cookies" 需要置空或为对象')
         # load cookies
         if 'cookies' in _http and _http['cookies']:
@@ -421,7 +421,7 @@ async def select() -> bool:
 
 
 async def start() -> None:
-    global _info
+    global _info, _courses
     # prepare and filter target courses
     courses = []
     for course in _courses:
@@ -431,6 +431,7 @@ async def start() -> None:
             courses.append(_cache['courses'][course])
     _courses = courses
     # start send request to select target course
+    Log.info(f'开始抢课, 抢课列表: {[c["name"] for c in _courses]}')
     while len(_courses) > 0:
         try:
             # start time
