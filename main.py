@@ -108,7 +108,7 @@ async def load_config() -> None:
         # load id, password
         if 'id' not in _info or 'password' not in _info:
             raise ConfigLoadException('配置文件中, 字段 "info" 需要包含 id, password')
-        # load cookie
+        # load cookies
         if 'cookies' in _http and _http['cookies']:
             if 'JSESSIONID' in _http['cookies'] \
                     and 'route' in _http['cookies'] \
@@ -422,7 +422,7 @@ async def start() -> None:
         try:
             # start time
             start = time.monotonic()
-            # function return bool represent if wait
+            # function return bool represent whether wait or not
             wait = await asyncio.wait_for(asyncio.shield(select()), timeout=_info['timeout'])
             # need wait
             if wait:
