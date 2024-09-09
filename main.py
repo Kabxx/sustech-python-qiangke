@@ -2,6 +2,7 @@ import asyncio
 import json
 import os.path
 import time
+import sys
 
 import aiohttp
 import lxml.etree
@@ -52,6 +53,9 @@ class CacheLoadException(MessageException):
 class LoginException(MessageException):
     pass
 
+class SelectException(MessageException):
+    pass
+
 
 class CookieExpireException(Exception):
     pass
@@ -88,10 +92,10 @@ async def load_config() -> None:
         _info = _config['info']
         _http = _config['http']
         _courses = _config['courses']
-        if 'retry' not in _info or not isinstance(_info['retry'], bool):
+        if 'retry' not in _info:
             _info['retry'] = False
-        if 'verify_cache' not in _info or not isinstance(_info['verify_cache'], bool):
-            _info['verify_cache'] = True
+        if 'cache_verify' not in _info:
+            _info['cache_verify'] = True
         # verify fields
         if not isinstance(_info, dict):
             raise ConfigLoadException('"info" 字段不是对象')
@@ -123,7 +127,7 @@ async def load_cache() -> None:
     # get semester data
     semester = await get_semester()
     # get selected courses
-    selected = await get_selected_courses(semester)
+    selected = await get_selected(semester)
     # try load _cache file
     global _cache
     if not os.path.exists(CACHE_PATH):
@@ -132,11 +136,14 @@ async def load_cache() -> None:
         try:
             with open(CACHE_PATH, mode='r') as cache_file:
                 _cache = json.load(cache_file)
-
-            if not _info['verify_cache'] or \
+            if not _info['cache_verify'] or \
                     (_cache['id'] == _info['id'] and _cache['semester'] == semester and set(_cache['selected']) == set(selected)):
-                Log.success(f'{"" if _info["verify_cache"] else "缓存文件校验关闭, "} 成功从缓存文件加载课程信息')
+                Log.success(
+                    f'{"" if _info["cache_verify"] else "缓存文件校验关闭, "}成功从缓存文件加载课程信息')
                 return
+            else:
+                Log.warning(
+                    f'缓存文件失效, 正在重新获取课程信息')
         except:
             Log.warning('缓存文件解析失败, 正在重新获取课程信息')
     # init cache
@@ -189,7 +196,7 @@ async def get_semester() -> dict:
 
 
 @auto_update
-async def get_selected_courses(semester: dict):
+async def get_selected(semester: dict):
     while True:
         try:
             async with aiohttp.ClientSession() as session:
@@ -211,7 +218,9 @@ async def get_selected_courses(semester: dict):
                 ) as res:
                     if res.status == 302:
                         raise CookieExpireException
-                    return [course['rwmc'] for course in json.loads(await res.read())['yxkcList']]
+                    selected = [course['rwmc'] for course in json.loads(await res.read())['yxkcList']]
+                    Log.success('成功获取已选课程')
+                    return selected
         except CookieExpireException as e:
             raise e
         except:
@@ -367,20 +376,26 @@ async def select_course() -> bool:
                 if "成功" in message:
                     Log.success(f'选课 "{course["name"]}" {message}, 进行下一课程')
                     remove_course(course)
-                    return False
+                    return True
                 elif '冲突' in message or \
                         '已选' in message or \
                         '已满' in message:
                     Log.info(f'"{course["name"]}" {message}, 跳过该课程')
                     remove_course(course)
-                    return False
+                    return True
                 elif '选课请求频率过高' in message:
                     Log.info(f'"{course["name"]}" {message}, 正在重试')
                     return False
+                elif '超过可选分数' in message:
+                    raise SelectException('选课分数已达上限')
                 else:
                     Log.info(f'"{course["name"]}" {message}, 等待重试')
                     return True
     except CookieExpireException as e:
+        raise e
+    except SelectException as e:
+        raise e
+    except KeyboardInterrupt as e:
         raise e
     except:
         Log.warning(f'选课 "{course["name"]}" 时发生未知错误, 正在重试')
@@ -409,8 +424,13 @@ async def main() -> None:
         except LoginException as e:
             Log.error(f'{e}')
             return
+        except SelectException as e:
+            Log.error(f'{e}')
+            return
         except asyncio.TimeoutError:
             pass
+        except Exception as e:
+            raise e
 
 
 if __name__ == '__main__':
