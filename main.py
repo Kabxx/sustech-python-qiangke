@@ -87,9 +87,11 @@ async def load_config() -> None:
             raise ConfigLoadException('配置文件缺少字段 "http"')
         if 'courses' not in _config:
             raise ConfigLoadException('配置文件缺少字段 "courses"')
+        # ref fields
         _info = _config['info']
         _http = _config['http']
         _courses = _config['courses']
+        # set default value to fields
         if 'retry' not in _info:
             _info['retry'] = False
         if 'cache_verify' not in _info:
@@ -129,13 +131,14 @@ async def load_cache() -> None:
     Log.info('正在加载缓存文件')
     # get semester data
     semester = await get_semester()
-    # get selected courses
+    # get selected courses data
     selected = await get_selected(semester)
-    # try load _cache file
+    # if cache file not exist
     if not os.path.exists(CACHE_PATH):
         Log.warning('缓存文件不存在, 正在重新获取课程信息')
     else:
         try:
+            # read and parse cache file
             with open(CACHE_PATH, mode='r') as cache_file:
                 _cache = json.load(cache_file)
             if not _info['cache_verify'] or \
@@ -151,7 +154,7 @@ async def load_cache() -> None:
     # init cache
     _cache = {'id': _info['id'], 'semester': semester,
               'courses': {}, 'selected': selected}
-    # _cache expire or not exist, get all courses
+    # get all courses and write to cache
     tasks = []
     for keyword, name in {
         'bxxk': '通识必修选课',
@@ -168,6 +171,7 @@ async def load_cache() -> None:
         )
     for courses in await asyncio.gather(*tasks):
         _cache['courses'].update(courses)
+    # save cache to file
     with open(CACHE_PATH, mode='w') as fd:
         fd.write(json.dumps(_cache))
     Log.success('已将课程信息写入缓存文件')
@@ -274,6 +278,7 @@ async def get_courses(semester: dict, keyword: str, name: str) -> None:
 async def get_cookies() -> dict[str, str]:
     global _info, _http
 
+    # get "TGC" cookies from CAS
     async def get_cas_cookies() -> dict[str, str]:
         async with aiohttp.ClientSession() as session:
             async with session.post(
@@ -295,6 +300,7 @@ async def get_cookies() -> dict[str, str]:
                 Log.success('成功获取CAS身份认证信息')
                 return cookies_
 
+    # get "JSESSIONID" and "route" cookies from TIS
     async def get_tis_cookies() -> dict[str, str]:
         async with aiohttp.ClientSession() as session:
             async with session.get(
@@ -342,6 +348,7 @@ async def get_cookies() -> dict[str, str]:
 @reload_cookies
 async def select() -> bool:
     global _cache, _http, _courses, _success
+    # check target courses num
     if len(_courses) <= 0:
         return False
     semester = _cache['semester']
@@ -367,12 +374,14 @@ async def select() -> bool:
                 if res.status == 302:
                     raise CookieExpireException
                 message = json.loads(await res.read())['message']
+                # success and pass
                 if "成功" in message:
                     Log.success(f'选课 "{course["name"]}" {message}, 进行下一课程')
                     if course['name'] == _courses[0]['name']:
                         _courses.pop(0)
                     _success.append(course['name'])
                     return True
+                # conflict and pass
                 elif '冲突' in message or \
                         '已选' in message or \
                         '已满' in message or \
@@ -381,9 +390,11 @@ async def select() -> bool:
                     if course['name'] == _courses[0]['name']:
                         _courses.pop(0)
                     return True
+                # select too quickly
                 elif '选课请求频率过高' in message:
                     Log.info(f'"{course["name"]}" {message}, 正在重试')
                     return False
+                # unknow error
                 else:
                     Log.info(f'"{course["name"]}" {message}, 等待重试')
                     return True
@@ -398,7 +409,7 @@ async def select() -> bool:
 
 async def start() -> None:
     global _info
-    # prepare target courses
+    # prepare and filter target courses
     courses = []
     for course in _courses:
         if course not in _cache['courses']:
@@ -409,13 +420,18 @@ async def start() -> None:
     # start send request to select target course
     while len(_courses) > 0:
         try:
+            # start time
             start = time.monotonic()
+            # function return bool represent if wait
             wait = await asyncio.wait_for(asyncio.shield(select()), timeout=_info['timeout'])
+            # need wait
             if wait:
+                # calc wait time
                 end = time.monotonic()
                 last = _info['timeout'] - (end - start)
                 if last > 0:
                     await asyncio.sleep(last)
+            # no wait
             else:
                 await asyncio.sleep(0.1)
         except LoginException as e:
