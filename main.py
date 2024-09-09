@@ -72,9 +72,9 @@ def reload_cookies(fun):
 
 
 async def load_config() -> None:
+    global _config, _info, _http, _courses
     Log.info('正在加载配置文件')
     try:
-        global _config, _info, _http, _courses
         try:
             with open(CONFIG_PATH, mode='r', encoding='utf8') as config_file:
                 _config = yaml.safe_load(config_file)
@@ -234,7 +234,7 @@ async def get_selected(semester: dict):
 
 @reload_cookies
 async def get_courses(semester: dict, keyword: str, name: str) -> None:
-    global _cache, _http
+    global _http
     while True:
         try:
             async with aiohttp.ClientSession() as session:
