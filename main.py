@@ -364,9 +364,9 @@ async def main() -> None:
                 end = time.monotonic()
                 last = 1.2 - (end - start)
                 if last > 0:
-                    time.sleep(last)
+                    await asyncio.sleep(last)
             else:
-                time.sleep(0.1)
+                await asyncio.sleep(0.1)
         except LoginException as e:
             Log.error(f'{e}')
             return
