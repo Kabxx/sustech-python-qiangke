@@ -1,0 +1,23 @@
+# 此文件编码必须为UTF8
+
+# 在此处填写你的学生id(id)和密码(password)
+info:
+  id: 11111111
+  password: Qwert12345
+  # 如果开启自动重试登录,那么请确保id和密码是正确的,否则会导致CAS认证限流,只能进行二维码登录
+  retry: false
+
+http:
+  # 在此处设置自定义http头
+  headers:
+    User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+  # 在此处设置身份认证信息(TIS网页的cookie)
+  # 获取方式(以谷歌浏览器为例): 进入TIS网页(保持登录状态) -> F12 -> 应用 -> Cookie -> https://tis.sustech.edu.cn -> 复制JSESSIONID, route
+  cookies:
+#    JSESSIONID: 7FEW781907KFC50VK50699BFH93AB7C1
+#    route: ee2s533f13fb04542c53b5585868e0fk
+
+# 此处填写要抢的课,以数组的方式填写
+courses:
+  - "C程序设计基础-01班-英文-1组"
+  - "C程序设计基础-01班-英文-1组"
