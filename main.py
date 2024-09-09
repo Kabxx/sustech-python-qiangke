@@ -122,7 +122,7 @@ async def load_config() -> None:
         Log.error(f'{e}')
         sys.exit(0)
     except Exception as e:
-        Log.error(f'加载配置文件失败: 错误{e}')
+        Log.error(f'加载配置文件失败: {e}')
         sys.exit(0)
 
 
