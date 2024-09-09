@@ -120,7 +120,7 @@ async def load_config() -> None:
         if not isinstance(_http['headers'], dict):
             raise ConfigLoadException('配置文件中,字段 "http.headers" 需要为对象')
         if not isinstance(_http['cookies'], dict) or _http['cookies'] is not None:
-            raise ConfigLoadException('配置文件中,字段 "http.headers" 需要置空或为对象')
+            raise ConfigLoadException('配置文件中,字段 "http.cookies" 需要置空或为对象')
         # load cookies
         if 'cookies' in _http and _http['cookies']:
             if 'JSESSIONID' in _http['cookies'] \
