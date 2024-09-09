@@ -376,16 +376,14 @@ async def select_course() -> bool:
                     return True
                 elif '冲突' in message or \
                         '已选' in message or \
-                        '已满' in message:
-                    Log.info(f'"{course["name"]}" {message}, 跳过该课程')
+                        '已满' in message or \
+                        '超过可选分数' in message:
+                    Log.warning(f'"{course["name"]}" {message}, 跳过该课程')
                     remove_course(course)
                     return True
                 elif '选课请求频率过高' in message:
                     Log.info(f'"{course["name"]}" {message}, 正在重试')
                     return False
-                elif '超过可选分数' in message:
-                    Log.warning(f'{course["name"]}" {message}, 跳过该课程')
-                    return True
                 else:
                     Log.info(f'"{course["name"]}" {message}, 等待重试')
                     return True
