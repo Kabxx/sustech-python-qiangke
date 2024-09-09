@@ -18,6 +18,7 @@ _http: dict = {}
 _cache: dict = {}
 
 _courses: list = []
+_success: list = []
 
 
 class Log:
@@ -58,14 +59,14 @@ class CookieExpireException(Exception):
     pass
 
 
-def auto_update(fun):
+def reload_cookies(fun):
     async def wrapper(*args, **kwargs):
         while True:
             try:
                 return await fun(*args, **kwargs)
             except CookieExpireException:
                 Log.warning('身份认证信息已过期, 重新进行身份认证')
-                _http['cookies'] = await get_cookie()
+                _http['cookies'] = await get_cookies()
 
     return wrapper
 
@@ -97,14 +98,14 @@ async def load_config() -> None:
             _info['timeout'] = 1.2
         # verify fields
         if not isinstance(_info, dict):
-            raise ConfigLoadException('"info" 字段不是对象')
+            raise ConfigLoadException('配置文件中,字段 "info" 不是对象')
         if not isinstance(_http, dict):
-            raise ConfigLoadException('"http" 字段不是对象')
+            raise ConfigLoadException('配置文件中,字段 "http" 不是对象')
         if not isinstance(_courses, list):
-            raise ConfigLoadException('"http" 字段不是数组')
+            raise ConfigLoadException('配置文件中,字段 "courses" 不是数组')
         # load id, password
         if 'id' not in _info or 'password' not in _info:
-            raise ConfigLoadException('"info" 字段中需要包含 id, password')
+            raise ConfigLoadException('配置文件中, 字段 "info" 需要包含 id, password')
         # load cookie
         if 'cookies' in _http and _http['cookies']:
             if 'JSESSIONID' in _http['cookies'] \
@@ -114,21 +115,23 @@ async def load_config() -> None:
                 Log.success('已从配置文件中加载身份认证信息')
                 return
         Log.warning('配置文件中未包含身份认证信息, 正在尝试获取')
-        _http['cookies'] = await get_cookie()
+        _http['cookies'] = await get_cookies()
     except MessageException as e:
-        raise e
+        Log.error(f'{e}')
+        sys.exit(0)
     except Exception as e:
-        raise ConfigLoadException(f'未知错误: {e}')
+        Log.error(f'加载配置文件失败: 错误{e}')
+        sys.exit(0)
 
 
 async def load_cache() -> None:
+    global _cache, _info
     Log.info('正在加载缓存文件')
     # get semester data
     semester = await get_semester()
     # get selected courses
     selected = await get_selected(semester)
     # try load _cache file
-    global _cache
     if not os.path.exists(CACHE_PATH):
         Log.warning('缓存文件不存在, 正在重新获取课程信息')
     else:
@@ -138,7 +141,7 @@ async def load_cache() -> None:
             if not _info['cache_verify'] or \
                     (_cache['id'] == _info['id'] and _cache['semester'] == semester and set(_cache['selected']) == set(selected)):
                 Log.success(
-                    f'{"" if _info["cache_verify"] else "缓存文件校验关闭, "}成功从缓存文件加载课程信息')
+                    f'{"缓存文件校验成功, " if _info["cache_verify"] else "缓存文件校验关闭, "}成功从缓存文件加载课程信息')
                 return
             else:
                 Log.warning(
@@ -169,8 +172,9 @@ async def load_cache() -> None:
     Log.success('已将课程信息写入缓存文件')
 
 
-@auto_update
+@reload_cookies
 async def get_semester() -> dict:
+    global _http
     while True:
         try:
             async with aiohttp.ClientSession() as session:
@@ -194,8 +198,9 @@ async def get_semester() -> dict:
             Log.warning('获取学期信息失败, 正在尝试重新获取')
 
 
-@auto_update
+@reload_cookies
 async def get_selected(semester: dict):
+    global _http
     while True:
         try:
             async with aiohttp.ClientSession() as session:
@@ -226,8 +231,9 @@ async def get_selected(semester: dict):
             Log.warning(f'获取已选课程失败, 正在尝试重新获取')
 
 
-@auto_update
+@reload_cookies
 async def load_courses(semester: dict, keyword: str, name: str) -> None:
+    global _cache, _http
     while True:
         try:
             async with aiohttp.ClientSession() as session:
@@ -263,7 +269,9 @@ async def load_courses(semester: dict, keyword: str, name: str) -> None:
             Log.warning(f'获取 "{name}" 的课程信息失败, 正在尝试重新获取')
 
 
-async def get_cookie() -> dict[str, str]:
+async def get_cookies() -> dict[str, str]:
+    global _info, _http
+
     async def get_cas_cookies() -> dict[str, str]:
         async with aiohttp.ClientSession() as session:
             async with session.post(
@@ -329,8 +337,8 @@ async def get_cookie() -> dict[str, str]:
                 raise LoginException('身份认证信息获取失败')
 
 
-def verify_course() -> None:
-    global _courses
+def prepare_targets() -> None:
+    global _cache, _courses
     courses = []
     for course in _courses:
         if course not in _cache['courses']:
@@ -340,13 +348,15 @@ def verify_course() -> None:
     _courses = courses
 
 
-def remove_course(course: dict) -> None:
+def remove_target(course: dict) -> None:
+    global _courses
     if course['name'] == _courses[0]['name']:
         _courses.pop(0)
 
 
-@auto_update
-async def select_course() -> bool:
+@reload_cookies
+async def select_target() -> bool:
+    global _cache, _http, _courses, _success
     if len(_courses) <= 0:
         return False
     semester = _cache['semester']
@@ -374,14 +384,15 @@ async def select_course() -> bool:
                 message = json.loads(await res.read())['message']
                 if "成功" in message:
                     Log.success(f'选课 "{course["name"]}" {message}, 进行下一课程')
-                    remove_course(course)
+                    remove_target(course)
+                    _success.append(course['name'])
                     return True
                 elif '冲突' in message or \
                         '已选' in message or \
                         '已满' in message or \
                         '超过可选分数' in message:
                     Log.warning(f'"{course["name"]}" {message}, 跳过该课程')
-                    remove_course(course)
+                    remove_target(course)
                     return True
                 elif '选课请求频率过高' in message:
                     Log.info(f'"{course["name"]}" {message}, 正在重试')
@@ -398,18 +409,14 @@ async def select_course() -> bool:
         return False
 
 
-async def main() -> None:
-    try:
-        await load_config()
-    except MessageException as e:
-        Log.error(f'加载配置文件失败: {e}')
-        return
-    await load_cache()
-    verify_course()
+async def start_select() -> None:
+    global _info
+    # prepare target courses
+    prepare_targets()
     while len(_courses) > 0:
         try:
             start = time.monotonic()
-            wait = await asyncio.wait_for(asyncio.shield(select_course()), timeout=_info['timeout'])
+            wait = await asyncio.wait_for(asyncio.shield(select_target()), timeout=_info['timeout'])
             if wait:
                 end = time.monotonic()
                 last = _info['timeout'] - (end - start)
@@ -424,6 +431,14 @@ async def main() -> None:
             pass
         except Exception as e:
             raise e
+
+
+async def main() -> None:
+    global _courses, _success
+    await load_config()
+    await load_cache()
+    await start_select()
+    Log.success(f'成功选择的课程: {_success if len(_success) > 0 else "无"}')
 
 
 if __name__ == '__main__':
