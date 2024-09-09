@@ -6,6 +6,7 @@ info:
   password: Qwert12345
   # 如果开启自动重试登录,那么请确保id和密码是正确的,否则会导致CAS认证限流,只能进行二维码登录
   retry: false
+  # 是否校验cache文件
   cache_verify: true
 
 http:
