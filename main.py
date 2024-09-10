@@ -430,7 +430,7 @@ async def select() -> bool:
                 elif '选课请求频率过高' in message:
                     Log.info(f'"{course["name"]}" {message}, 正在重试')
                     return False
-                # unknow error
+                # unknown error
                 else:
                     Log.info(f'"{course["name"]}" {message}, 等待重试')
                     return True
