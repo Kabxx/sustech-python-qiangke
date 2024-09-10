@@ -1,8 +1,8 @@
 import asyncio
 import json
 import os.path
-import time
 import sys
+import time
 import urllib
 import urllib.request
 
@@ -82,7 +82,7 @@ async def load_config() -> None:
         except:
             raise ConfigLoadException('配置文件解析失败')
         # verify config
-        if not isinstance(config,dict):
+        if not isinstance(config, dict):
             raise ConfigLoadException('配置文件格式错误')
         # load fields
         if 'info' not in config:
@@ -168,7 +168,8 @@ async def load_cache() -> None:
             with open(CACHE_PATH, mode='r') as cache_file:
                 _cache = json.load(cache_file)
             if not _info['cache_verify'] or \
-                    (_cache['id'] == _info['id'] and _cache['semester'] == semester and set(_cache['selected']) == set(selected)):
+                    (_cache['id'] == _info['id'] and _cache['semester'] == semester and set(_cache['selected']) == set(
+                        selected)):
                 Log.success(
                     f'{"缓存文件校验成功, " if _info["cache_verify"] else "缓存文件校验关闭, "}成功从缓存文件加载课程信息')
                 return
@@ -237,21 +238,21 @@ async def get_selected(semester: dict):
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    proxy=_http['proxy'],
-                    url='https://tis.sustech.edu.cn/Xsxk/queryYxkc',
-                    headers=_http['headers'],
-                    cookies=_http['cookies'],
-                    data={
-                        "p_xn": semester['p_xn'],
-                        "p_xq": semester['p_xq'],
-                        "p_xnxq": semester['p_xnxq'],
-                        "p_pylx": 1,
-                        "mxpylx": 1,
-                        "p_xkfsdm": 'yixuan',
-                        "pageNum": 1,
-                        "pageSize": 1000
-                    },
-                    allow_redirects=False,
+                        proxy=_http['proxy'],
+                        url='https://tis.sustech.edu.cn/Xsxk/queryYxkc',
+                        headers=_http['headers'],
+                        cookies=_http['cookies'],
+                        data={
+                            'p_xn': semester['p_xn'],
+                            'p_xq': semester['p_xq'],
+                            'p_xnxq': semester['p_xnxq'],
+                            'p_pylx': 1,
+                            'mxpylx': 1,
+                            'p_xkfsdm': 'yixuan',
+                            'pageNum': 1,
+                            'pageSize': 1000
+                        },
+                        allow_redirects=False,
                 ) as res:
                     if res.status == 302:
                         raise CookieExpireException
@@ -265,7 +266,7 @@ async def get_selected(semester: dict):
 
 
 @reload_cookies
-async def get_courses(semester: dict, keyword: str, name: str) -> None:
+async def get_courses(semester: dict, keyword: str, name: str) -> dict:
     global _http
     while True:
         try:
@@ -276,14 +277,14 @@ async def get_courses(semester: dict, keyword: str, name: str) -> None:
                         headers=_http['headers'],
                         cookies=_http['cookies'],
                         data={
-                            "p_xn": semester['p_xn'],
-                            "p_xq": semester['p_xq'],
-                            "p_xnxq": semester['p_xnxq'],
-                            "p_pylx": 1,
-                            "mxpylx": 1,
-                            "p_xkfsdm": keyword,
-                            "pageNum": 1,
-                            "pageSize": 1000
+                            'p_xn': semester['p_xn'],
+                            'p_xq': semester['p_xq'],
+                            'p_xnxq': semester['p_xnxq'],
+                            'p_pylx': 1,
+                            'mxpylx': 1,
+                            'p_xkfsdm': keyword,
+                            'pageNum': 1,
+                            'pageSize': 1000
                         },
                         allow_redirects=False,
                 ) as res:
@@ -365,6 +366,7 @@ async def get_cookies() -> dict[str, str]:
                     raise LoginException
                 Log.success('成功获取TIS身份认证信息')
             return cookies_
+
     while True:
         try:
             cookies = await get_tis_cookies()
@@ -394,14 +396,14 @@ async def select() -> bool:
                     headers=_http['headers'],
                     cookies=_http['cookies'],
                     data={
-                        "p_pylx": 1,
-                        "p_xktjz": "rwtjzyx",
-                        "p_xn": semester['p_xn'],
-                        "p_xq": semester['p_xq'],
-                        "p_xnxq": semester['p_xnxq'],
-                        "p_xkfsdm": course['kind'],
-                        "p_id": course['id'],
-                        "p_sfxsgwckb": 1,
+                        'p_pylx': 1,
+                        'p_xktjz': "rwtjzyx",
+                        'p_xn': semester['p_xn'],
+                        'p_xq': semester['p_xq'],
+                        'p_xnxq': semester['p_xnxq'],
+                        'p_xkfsdm': course['kind'],
+                        'p_id': course['id'],
+                        'p_sfxsgwckb': 1,
                     },
                     allow_redirects=False,
             ) as res:
@@ -456,16 +458,12 @@ async def start() -> None:
     while len(_courses) > 0:
         try:
             # start time
-            start = time.monotonic()
+            beg = time.monotonic()
             # function return bool represent whether wait or not
-            wait = await asyncio.wait_for(asyncio.shield(select()), timeout=_info['timeout'])
-            # need wait
-            if wait:
-                # calc wait time
-                last = _info['timeout'] - (time.monotonic() - start)
-                if last > 0:
-                    await asyncio.sleep(last)
-            # no wait
+            if await asyncio.wait_for(asyncio.shield(select()), timeout=_info['timeout']):
+                wait = _info['timeout'] - (time.monotonic() - beg)
+                await asyncio.sleep(wait if wait > 0 else 0)
+            # no wait only buffering
             else:
                 await asyncio.sleep(0.1)
         except LoginException as e:
@@ -482,6 +480,7 @@ async def main() -> None:
     await load_config()
     await load_cache()
     await start()
+
 
 if __name__ == '__main__':
     try:
