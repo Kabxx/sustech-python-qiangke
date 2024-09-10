@@ -3,6 +3,8 @@ import json
 import os.path
 import time
 import sys
+import urllib
+import urllib.request
 
 import aiohttp
 import lxml.etree
@@ -12,7 +14,6 @@ import yaml
 CONFIG_PATH = './config.yaml'
 CACHE_PATH = './cache.json'
 
-_config: dict = {}
 _info: dict = {}
 _http: dict = {}
 _cache: dict = {}
@@ -72,38 +73,28 @@ def reload_cookies(fun):
 
 
 async def load_config() -> None:
-    global _config, _info, _http, _courses
+    global _info, _http, _courses
     Log.info('正在加载配置文件')
     try:
         try:
             with open(CONFIG_PATH, mode='r', encoding='utf8') as config_file:
-                _config = yaml.safe_load(config_file)
+                config = yaml.safe_load(config_file)
         except:
             raise ConfigLoadException('配置文件解析失败')
+        # verify config
+        if not isinstance(config,dict):
+            raise ConfigLoadException('配置文件格式错误')
         # load fields
-        if 'info' not in _config:
+        if 'info' not in config:
             raise ConfigLoadException('配置文件缺少字段 "info"')
-        if 'http' not in _config:
+        if 'http' not in config:
             raise ConfigLoadException('配置文件缺少字段 "http"')
-        if 'courses' not in _config:
+        if 'courses' not in config:
             raise ConfigLoadException('配置文件缺少字段 "courses"')
         # ref fields
-        _info = _config['info']
-        _http = _config['http']
-        _courses = _config['courses']
-        # check if id, password exist
-        if 'id' not in _info or 'password' not in _info:
-            raise ConfigLoadException('配置文件中, 字段 "info" 需要包含 id, password')
-        else:
-            _info['id'] = str(_info['id'])
-            _info['password'] = str(_info['password'])
-        # set default value to fields
-        if 'retry' not in _info:
-            _info['retry'] = False
-        if 'cache_verify' not in _info:
-            _info['cache_verify'] = True
-        if 'timeout' not in _info:
-            _info['timeout'] = 1.2
+        _info = config['info']
+        _http = config['http']
+        _courses = config['courses']
         # verify fields
         if not isinstance(_info, dict):
             raise ConfigLoadException('配置文件中,字段 "info" 需要为对象')
@@ -121,6 +112,28 @@ async def load_config() -> None:
             raise ConfigLoadException('配置文件中,字段 "http.headers" 需要为对象')
         if not isinstance(_http['cookies'], dict) and _http['cookies'] is not None:
             raise ConfigLoadException('配置文件中,字段 "http.cookies" 需要置空或为对象')
+        # load id, password
+        if 'id' not in _info or 'password' not in _info:
+            raise ConfigLoadException('配置文件中, 字段 "info" 需要包含 id, password')
+        else:
+            _info['id'] = str(_info['id'])
+            _info['password'] = str(_info['password'])
+        # set default value to fields
+        if 'retry' not in _info:
+            _info['retry'] = False
+        if 'cache_verify' not in _info:
+            _info['cache_verify'] = True
+        if 'timeout' not in _info:
+            _info['timeout'] = 1.2
+        # load http proxy
+        if 'proxy' not in _http or _http['proxy'] is None:
+            proxies = urllib.request.getproxies()
+            if 'http' in proxies:
+                _http['proxy'] = proxies['http']
+            else:
+                _http['proxy'] = None
+        if _http['proxy'] is not None:
+            Log.info(f'使用http代理: {_http["proxy"]}')
         # load cookies
         if 'cookies' in _http and _http['cookies']:
             if 'JSESSIONID' in _http['cookies'] \
@@ -197,6 +210,7 @@ async def get_semester() -> dict:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
+                        proxy=_http['proxy'],
                         url='https://tis.sustech.edu.cn/Xsxk/queryXkdqXnxq',
                         data={
                             'mxpylx': 1
@@ -223,6 +237,7 @@ async def get_selected(semester: dict):
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
+                    proxy=_http['proxy'],
                     url='https://tis.sustech.edu.cn/Xsxk/queryYxkc',
                     headers=_http['headers'],
                     cookies=_http['cookies'],
@@ -256,6 +271,7 @@ async def get_courses(semester: dict, keyword: str, name: str) -> None:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
+                        proxy=_http['proxy'],
                         url='https://tis.sustech.edu.cn/Xsxk/queryKxrw',
                         headers=_http['headers'],
                         cookies=_http['cookies'],
@@ -295,6 +311,7 @@ async def get_cookies() -> dict[str, str]:
     async def get_cas_cookies() -> dict[str, str]:
         async with aiohttp.ClientSession() as session:
             async with session.post(
+                    proxy=_http['proxy'],
                     url='https://cas.sustech.edu.cn/cas/login',
                     data={
                         'username': _info['id'],
@@ -317,6 +334,7 @@ async def get_cookies() -> dict[str, str]:
     async def get_tis_cookies() -> dict[str, str]:
         async with aiohttp.ClientSession() as session:
             async with session.get(
+                    proxy=_http['proxy'],
                     url='https://tis.sustech.edu.cn/authentication/main',
                     headers=_http['headers'],
                     allow_redirects=False,
@@ -326,6 +344,7 @@ async def get_cookies() -> dict[str, str]:
                     'route': res.cookies['route'].value,
                 }
             async with session.get(
+                    proxy=_http['proxy'],
                     url='https://cas.sustech.edu.cn/cas/login?service=https://tis.sustech.edu.cn/cas',
                     headers=_http['headers'],
                     cookies=await get_cas_cookies(),
@@ -335,6 +354,7 @@ async def get_cookies() -> dict[str, str]:
                     raise LoginException
                 ticket = res.headers['Location']
             async with session.get(
+                    proxy=_http['proxy'],
                     url=ticket,
                     cookies=cookies_,
                     headers=_http['headers'],
@@ -369,6 +389,7 @@ async def select() -> bool:
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
+                    proxy=_http['proxy'],
                     url='https://tis.sustech.edu.cn/Xsxk/addGouwuche',
                     headers=_http['headers'],
                     cookies=_http['cookies'],
@@ -441,8 +462,7 @@ async def start() -> None:
             # need wait
             if wait:
                 # calc wait time
-                end = time.monotonic()
-                last = _info['timeout'] - (end - start)
+                last = _info['timeout'] - (time.monotonic() - start)
                 if last > 0:
                     await asyncio.sleep(last)
             # no wait
